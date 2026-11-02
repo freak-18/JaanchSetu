@@ -7,15 +7,17 @@ import { PrismaService, ensureAuditImmutability } from './infra/prisma.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { logger: ['log', 'warn', 'error'] });
-  app.setGlobalPrefix('api');
   const origins = config.corsOrigin.trim();
-  app.enableCors({ origin: origins === '*' ? true : origins.split(',').map(o => o.trim()), credentials: false });
+  const originValue = origins === '*' ? true : origins.split(',').map(o => o.trim());
+  app.enableCors({ origin: originValue, credentials: false });
+  new Logger('Bootstrap').log(`CORS origins: ${JSON.stringify(originValue)}`);
+  app.setGlobalPrefix('api');
   app.use((_req: any, res: any, next: () => void) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     next();
   });
-  // Health check for Render
+  // Health check — registered after prefix so it lives at /api/health
   const httpAdapter = app.getHttpAdapter();
   httpAdapter.get('/api/health', (_req: any, res: any) => res.json({ status: 'ok' }));
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true, transformOptions: { enableImplicitConversion: false } }));
