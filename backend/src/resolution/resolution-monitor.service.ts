@@ -38,8 +38,11 @@ export class ResolutionMonitorService {
         // Make sure every reached milestone is recorded, but only announce the highest new one.
         let announce: (typeof reached)[number] | null = null;
         for (const m of [...reached].reverse()) {
-          const made = await this.prisma.milestoneNotice.createMany({ data: [{ fdrId: f.id, milestone: m.key }], skipDuplicates: true });
-          if (made.count === 1) announce = m;
+          const existing = await this.prisma.milestoneNotice.findUnique({ where: { fdrId_milestone: { fdrId: f.id, milestone: m.key } } });
+          if (!existing) {
+            await this.prisma.milestoneNotice.create({ data: { fdrId: f.id, milestone: m.key } });
+            announce = m;
+          }
         }
         if (!announce) continue;
         const level = announce.days >= 30 ? 3 : announce.days >= 7 ? 2 : 1;
@@ -53,8 +56,9 @@ export class ResolutionMonitorService {
     // Case deadlines: one notice per case.
     const late = await this.prisma.resolutionCase.findMany({ where: { state: { in: ACTIVE_STATES as any }, dueDate: { lt: today } }, include: { fdr: { select: { fdrNumber: true, institutionId: true } } } });
     for (const c of late) {
-      const made = await this.prisma.milestoneNotice.createMany({ data: [{ fdrId: c.fdrId, milestone: `DUE:${c.id}` }], skipDuplicates: true });
-      if (made.count !== 1) continue;
+      const existingNotice = await this.prisma.milestoneNotice.findUnique({ where: { fdrId_milestone: { fdrId: c.fdrId, milestone: `DUE:${c.id}` } } });
+      if (existingNotice) continue;
+      await this.prisma.milestoneNotice.create({ data: { fdrId: c.fdrId, milestone: `DUE:${c.id}` } });
       const to = c.assignedToId ? await this.prisma.user.findMany({ where: { id: c.assignedToId, active: true } }) : await this.notify.recipientsForLevel(1, c.fdr.institutionId);
       await this.notify.notify(to, { kind: 'RESOLUTION', title: `Case deadline missed: ${c.caseNo}`, body: `The deadline for case ${c.caseNo} (FDR ${c.fdr.fdrNumber}) has passed and it is still ${c.state}.`, fdrId: c.fdrId });
       sent++;

@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../infra/prisma.service';
 import { AuditService } from '../infra/audit.service';
 import { ClockService } from '../infra/clock.service';
@@ -241,7 +242,7 @@ export class ResolutionService implements OnModuleInit {
         if (r.count !== 1) throw new ConflictException('This case was just changed by someone else. Reload it and try again.');
         await tx.resolutionEvent.create({ data: { caseId: c.id, actorId: user.id, actorLabel: this.actorLabel(user), event, fromState: c.state, toState: to, meta: meta as any, idemKey: idemKey ?? null, at } });
         if (extra) await extra(tx);
-        await this.audit.log({ actor: toActor(user), action: `RESOLUTION_${event}`, entityType: 'ResolutionCase', entityId: c.id, detail: { caseNo: c.caseNo, fdrId: c.fdrId, from: c.state, to, ...meta } }, tx);
+        await this.audit.log({ actor: toActor(user), action: `RESOLUTION_${event}`, entityType: 'ResolutionCase', entityId: c.id, detail: { caseNo: c.caseNo, fdrId: c.fdrId, from: c.state, to, ...meta } });
       });
     } catch (e) {
       if ((e as { code?: string }).code === 'P2002') throw new ConflictException('This request was already processed.');
@@ -428,7 +429,7 @@ export class ResolutionService implements OnModuleInit {
       const r = await tx.resolutionCase.updateMany({ where: { id, version: c.version }, data: { escalationLevel: next, version: { increment: 1 } } });
       if (r.count !== 1) throw new ConflictException('This case was just changed by someone else. Reload it and try again.');
       await tx.resolutionEvent.create({ data: { caseId: id, actorId: user.id, actorLabel: this.actorLabel(user), event: 'ESCALATED', fromState: c.state, toState: c.state, meta: { level: next, reason: text } as any, at } });
-      await this.audit.log({ actor: toActor(user), action: 'RESOLUTION_ESCALATED', entityType: 'ResolutionCase', entityId: id, detail: { caseNo: c.caseNo, level: next, reason: text } }, tx);
+      await this.audit.log({ actor: toActor(user), action: 'RESOLUTION_ESCALATED', entityType: 'ResolutionCase', entityId: id, detail: { caseNo: c.caseNo, level: next, reason: text } });
     });
     const to = await this.notify.recipientsForLevel(2, c.fdr.institutionId);
     await this.notify.notify(to, { kind: 'RESOLUTION', title: `Escalated: ${c.caseNo}`, body: `${user.name} escalated the case for FDR ${c.fdr.fdrNumber}: ${text}`, fdrId: c.fdrId });

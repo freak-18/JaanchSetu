@@ -5,7 +5,7 @@ import { ClockService } from '../infra/clock.service';
 import { AuthUser } from '../auth/auth.types';
 import { scopeWhere } from '../fdrs/filters';
 import { DashboardService } from '../dashboard/dashboard.service';
-import { CoverageService } from '../coverage/coverage.service';
+import { CoverageService, CoverageRow } from '../coverage/coverage.service';
 import { isInstitution } from '../auth/auth.types';
 import { addDays, daysBetween, isoDate } from '../domain/dates';
 
@@ -221,8 +221,8 @@ export class ReportsService {
     }
     const all: string[] = ['SHORTFALL', 'AT_RISK', 'WATCH'];
     const o = await this.coverage.overview({ pageSize: 20000 });
-    const gaps = o.items.filter((i) => all.includes(i.status));
-    return { total: gaps.length, rows: gaps.slice(skip, skip + take).map((i) => toRow(i)) };
+    const gaps = o.items.filter((i: CoverageRow) => all.includes(i.status));
+    return { total: gaps.length, rows: gaps.slice(skip, skip + take).map((i: CoverageRow) => toRow(i)) };
   }
 
   private async institutionSummary(user: AuthUser, skip: number, take: number, page: number) {
