@@ -19,7 +19,7 @@ export const config = {
   // 32-byte AES-256 key as 64 hex chars. The default is for local demos only.
   fileEncKey: env.FILE_ENC_KEY || '5341404b5348492d323032362d44454d4f2d4b45592d4e4f542d464f522d5052',
 
-  storageDriver: (env.STORAGE_DRIVER || 's3') as 's3' | 'local',
+  storageDriver: (env.STORAGE_DRIVER || (env.NODE_ENV === 'production' ? 'local' : 's3')) as 's3' | 'local',
   localStorageDir: env.LOCAL_STORAGE_DIR || path.resolve(__dirname, '../storage'),
   s3: {
     endpoint: env.S3_ENDPOINT || 'http://localhost:9000',
