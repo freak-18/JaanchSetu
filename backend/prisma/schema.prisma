@@ -1,0 +1,452 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  INSTITUTION
+  SCRUTINY
+  APPROVER
+  ADMIN
+}
+
+enum FdrStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_SCRUTINY
+  DISCREPANCY_RAISED
+  ACCEPTED
+  EXPIRING_SOON
+  MATURED
+  RENEWAL_PENDING
+  RENEWED
+  RELEASE_REQUESTED
+  RELEASE_RECOMMENDED
+  RELEASED
+  REJECTED
+}
+
+enum DiscrepancyType {
+  AMOUNT_MISMATCH
+  DATE_MISMATCH
+  FDR_NUMBER_MISMATCH
+  INVALID_IFSC
+  MATURITY_BEFORE_ISSUE
+  NOT_IN_FAVOUR_OF_AUTHORITY
+  MISSING_DOCUMENT
+  DUPLICATE_DOCUMENT
+  DUPLICATE_FDR_NUMBER
+  BANK_MISMATCH
+  BANK_NOT_FOUND
+  MANUAL
+}
+
+enum DiscrepancyStatus {
+  OPEN
+  RESOLVED
+  WAIVED
+}
+
+enum ReviewAction {
+  CONFIRMED
+  CORRECTED
+}
+
+enum ReleaseStatus {
+  REQUESTED
+  RECOMMENDED
+  APPROVED
+  REJECTED
+}
+
+model Institution {
+  id              String  @id @default(auto()) @map("_id") @db.ObjectId
+  name            String
+  city            String
+  state           String
+  requiredDeposit Int?
+  users           User[]
+  fdrs            Fdr[]
+}
+
+model User {
+  id            String        @id @default(auto()) @map("_id") @db.ObjectId
+  email         String        @unique
+  name          String
+  passwordHash  String
+  roles         Role[]
+  active        Boolean       @default(true)
+  institutionId String?       @db.ObjectId
+  institution   Institution?  @relation(fields: [institutionId], references: [id])
+  createdAt     DateTime      @default(now())
+  notifications Notification[]
+}
+
+model Fdr {
+  id            String      @id @default(auto()) @map("_id") @db.ObjectId
+  institutionId String      @db.ObjectId
+  institution   Institution @relation(fields: [institutionId], references: [id])
+  status        FdrStatus   @default(DRAFT)
+
+  fdrNumber    String?
+  bankName     String?
+  ifsc         String?
+  amount       Int?
+  issueDate    DateTime?
+  maturityDate DateTime?
+
+  previousFdrId String? @db.ObjectId
+  previous      Fdr?    @relation("Renewal", fields: [previousFdrId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  renewals      Fdr[]   @relation("Renewal")
+
+  createdById     String
+  createdByName   String
+  rejectionReason String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  fields          FdrField[]
+  documents       Document[]
+  discrepancies   Discrepancy[]
+  reminders       Reminder[]
+  releaseRequests ReleaseRequest[]
+  transitions     FdrTransition[]
+  resolutionCases ResolutionCase[]
+
+  @@index([institutionId])
+  @@index([status])
+  @@index([maturityDate])
+  @@index([fdrNumber])
+}
+
+model FdrTransition {
+  id         String     @id @default(auto()) @map("_id") @db.ObjectId
+  fdrId      String     @db.ObjectId
+  fdr        Fdr        @relation(fields: [fdrId], references: [id], onDelete: Cascade)
+  fromStatus FdrStatus?
+  toStatus   FdrStatus
+  actorId    String?
+  actorLabel String
+  note       String?
+  at         DateTime   @default(now())
+  clockDate  String?
+
+  @@index([fdrId])
+}
+
+model FdrField {
+  id    String @id @default(auto()) @map("_id") @db.ObjectId
+  fdrId String @db.ObjectId
+  fdr   Fdr    @relation(fields: [fdrId], references: [id], onDelete: Cascade)
+  key   String
+
+  submittedValue  String?
+  submittedById   String?
+  submittedByName String?
+  submittedAt     DateTime?
+
+  extractedValue      String?
+  extractedConfidence Float?
+  extractedAt         DateTime?
+  extractedDocId      String?
+  extractedBy         String?
+
+  bankValue  String?
+  bankAt     DateTime?
+  bankSource String?
+
+  reviewAction   ReviewAction?
+  reviewedValue  String?
+  reviewedById   String?
+  reviewedByName String?
+  reviewedAt     DateTime?
+  reviewNote     String?
+
+  @@unique([fdrId, key])
+}
+
+model Document {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  fdrId          String   @db.ObjectId
+  fdr            Fdr      @relation(fields: [fdrId], references: [id], onDelete: Cascade)
+  fileName       String
+  mimeType       String
+  sizeBytes      Int
+  sha256         String
+  storageKey     String
+  uploadedById   String
+  uploadedByName String
+  uploadedAt     DateTime @default(now())
+  ocrStatus      String   @default("NOT_RUN")
+  ocrNote        String?
+  ocrText        String?
+  ocrMeanConfidence Float?
+
+  @@index([sha256])
+  @@index([fdrId])
+}
+
+model Discrepancy {
+  id             String            @id @default(auto()) @map("_id") @db.ObjectId
+  fdrId          String            @db.ObjectId
+  fdr            Fdr               @relation(fields: [fdrId], references: [id], onDelete: Cascade)
+  type           DiscrepancyType
+  fieldKey       String?
+  reason         String
+  status         DiscrepancyStatus @default(OPEN)
+  raisedByLabel  String
+  createdAt      DateTime          @default(now())
+  resolutionNote String?
+  resolvedById   String?
+  resolvedByName String?
+  resolvedAt     DateTime?
+
+  @@index([fdrId])
+  @@index([status])
+}
+
+model ReminderRule {
+  id   String @id @default(auto()) @map("_id") @db.ObjectId
+  days Int    @unique
+}
+
+model Reminder {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  fdrId         String   @db.ObjectId
+  fdr           Fdr      @relation(fields: [fdrId], references: [id], onDelete: Cascade)
+  thresholdDays Int
+  level         Int      @default(0)
+  suppressed    Boolean  @default(false)
+  createdAt     DateTime
+  levelSince    DateTime
+  ackedAt       DateTime?
+  ackedById     String?
+  ackedByName   String?
+  events        EscalationEvent[]
+
+  @@unique([fdrId, thresholdDays])
+}
+
+model EscalationEvent {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  reminderId String   @db.ObjectId
+  reminder   Reminder @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+  fdrId      String   @db.ObjectId
+  level      Int
+  toRole     Role
+  at         DateTime
+  note       String
+}
+
+model Notification {
+  id         String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String    @db.ObjectId
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fdrId      String?
+  reminderId String?
+  kind       String
+  title      String
+  body       String
+  createdAt  DateTime
+  readAt     DateTime?
+
+  @@index([userId])
+}
+
+model Setting {
+  id    String @id @default(auto()) @map("_id") @db.ObjectId
+  key   String @unique
+  value String
+}
+
+model SimBankRecord {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  fdrNumber     String   @unique
+  bankName      String
+  branch        String
+  ifsc          String
+  amount        Int
+  issueDate     DateTime
+  maturityDate  DateTime
+  depositorName String
+  inFavourOf    String
+  outage        Boolean  @default(false)
+}
+
+model ReleaseRequest {
+  id              String        @id @default(auto()) @map("_id") @db.ObjectId
+  fdrId           String        @db.ObjectId
+  fdr             Fdr           @relation(fields: [fdrId], references: [id], onDelete: Cascade)
+  status          ReleaseStatus @default(REQUESTED)
+  reason          String
+  requestedById   String
+  requestedByName String
+  requestedAt     DateTime      @default(now())
+  checklist       Json
+  makerId         String?
+  makerName       String?
+  makerNote       String?
+  recommendedAt   DateTime?
+  checkerId       String?
+  checkerName     String?
+  decisionReason  String?
+  decidedAt       DateTime?
+
+  @@index([fdrId])
+}
+
+model AuditLog {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  seq        Int
+  at         DateTime
+  clockDate  String?
+  actorId    String?
+  actorEmail String
+  actorRole  String
+  action     String
+  entityType String
+  entityId   String?
+  detail     Json
+  prevHash   String
+  hash       String   @unique
+
+  @@index([entityType, entityId])
+  @@index([seq])
+}
+
+model EmailLog {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  toEmail   String
+  toUserId  String?
+  subject   String
+  body      String
+  status    String
+  error     String?
+  fdrId     String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model ReleaseOrder {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  orderNo          String   @unique
+  releaseRequestId String   @unique
+  fdrId            String   @db.ObjectId
+  snapshot         Json
+  orderHash        String
+  auditSeq         Int
+  auditHash        String
+  createdAt        DateTime @default(now())
+
+  @@index([fdrId])
+}
+
+enum ResolutionType {
+  RENEWAL
+  RELEASE
+}
+
+enum ResolutionState {
+  OPEN
+  EVIDENCE_PENDING
+  VERIFICATION_PENDING
+  APPROVAL_PENDING
+  APPROVED
+  EXECUTION_PENDING
+  COMPLETED
+  REJECTED
+  BLOCKED
+  CANCELLED
+}
+
+model ResolutionCase {
+  id               String          @id @default(auto()) @map("_id") @db.ObjectId
+  caseNo           String          @unique
+  fdrId            String          @db.ObjectId
+  fdr              Fdr             @relation(fields: [fdrId], references: [id], onDelete: Cascade)
+  type             ResolutionType
+  state            ResolutionState @default(OPEN)
+  delayReason      String
+  assignedToId     String?
+  assignedToName   String?
+  dueDate          DateTime?
+  escalationLevel  Int             @default(0)
+  version          Int             @default(1)
+  openedById       String
+  openedByName     String
+  submittedById    String?
+  submittedByName  String?
+  blockedReasons   Json?
+  linkedFdrId      String?
+  releaseRequestId String?
+  acknowledgment   String?
+  completedAt      DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  evidence  ResolutionEvidence[]
+  approvals ResolutionApproval[]
+  events    ResolutionEvent[]
+
+  @@index([fdrId])
+  @@index([state])
+}
+
+model ResolutionEvidence {
+  id          String         @id @default(auto()) @map("_id") @db.ObjectId
+  caseId      String         @db.ObjectId
+  case        ResolutionCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  kind        String
+  note        String
+  documentId  String?
+  addedById   String
+  addedByName String
+  createdAt   DateTime       @default(now())
+
+  @@index([caseId])
+}
+
+model ResolutionApproval {
+  id           String         @id @default(auto()) @map("_id") @db.ObjectId
+  caseId       String         @db.ObjectId
+  case         ResolutionCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  decision     String
+  reviewerId   String
+  reviewerName String
+  role         String
+  comment      String
+  at           DateTime       @default(now())
+
+  @@index([caseId])
+}
+
+model ResolutionEvent {
+  id         String          @id @default(auto()) @map("_id") @db.ObjectId
+  caseId     String          @db.ObjectId
+  case       ResolutionCase  @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  actorId    String?
+  actorLabel String
+  event      String
+  fromState  ResolutionState?
+  toState    ResolutionState?
+  meta       Json?
+  idemKey    String?         @unique
+  at         DateTime        @default(now())
+
+  @@index([caseId])
+}
+
+model MilestoneNotice {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  fdrId     String   @db.ObjectId
+  milestone String
+  createdAt DateTime @default(now())
+
+  @@unique([fdrId, milestone])
+}
