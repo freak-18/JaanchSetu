@@ -9,7 +9,9 @@ backend/storage
 !.env.example
 *.log
 *.tsbuildinfo
-coverage/
+**/coverage/
+!backend/src/coverage/
+!frontend/src/coverage/
 .DS_Store
 Thumbs.db
 
