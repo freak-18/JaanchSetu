@@ -12,6 +12,7 @@ RUN npm run build
 RUN mkdir -p /app/tessdata && curl -fsSL -o /app/tessdata/eng.traineddata https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata || echo "tessdata download failed; OCR will try the CDN at runtime"
 ENV TESSDATA_PATH=/app/tessdata NODE_ENV=production
 COPY docker-entrypoint.sh ./
-RUN chmod +x docker-entrypoint.sh
+COPY start.sh ./
+RUN chmod +x docker-entrypoint.sh start.sh
 EXPOSE 4000
 CMD ["./docker-entrypoint.sh"]
