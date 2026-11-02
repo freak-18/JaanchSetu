@@ -12,7 +12,7 @@ export const config = {
   jwtSecret: env.JWT_SECRET || 'dev-only-secret-change-me',
   jwtExpiresIn: env.JWT_EXPIRES_IN || '8h',
   demoMode: env.DEMO_MODE !== 'false',
-  corsOrigin: env.CORS_ORIGIN || 'http://localhost:5173',
+  corsOrigin: env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:4173',
   // Address people use to open the app. The QR code on a release order points here (/verify/<order no>).
   publicUrl: env.PUBLIC_URL || 'http://localhost:5173',
 

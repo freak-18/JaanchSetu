@@ -8,7 +8,8 @@ import { PrismaService, ensureAuditImmutability } from './infra/prisma.service';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { logger: ['log', 'warn', 'error'] });
   app.setGlobalPrefix('api');
-  app.enableCors({ origin: config.corsOrigin.split(','), credentials: false });
+  const origins = config.corsOrigin.trim();
+  app.enableCors({ origin: origins === '*' ? true : origins.split(',').map(o => o.trim()), credentials: false });
   app.use((_req: any, res: any, next: () => void) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
