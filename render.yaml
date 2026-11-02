@@ -9,8 +9,8 @@ services:
     runtime: node
     plan: free
     rootDir: backend
-    buildCommand: npm install && npx prisma generate && npm run build
-    startCommand: node dist/main
+    buildCommand: npm install && npx prisma generate && npm run build && chmod +x start.sh
+    startCommand: sh start.sh
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
