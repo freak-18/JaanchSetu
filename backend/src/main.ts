@@ -14,6 +14,12 @@ async function bootstrap() {
     res.setHeader('X-Frame-Options', 'DENY');
     next();
   });
+  // Health check for Render
+  const httpAdapter = app.getHttpAdapter();
+  httpAdapter.get('/api/health', (_req: any, res: any) => res.json({ status: 'ok' }));
+  // Health check for Render (must be before the global prefix)
+  const httpAdapter = app.getHttpAdapter();
+  httpAdapter.get('/api/health', (_req: any, res: any) => res.json({ status: 'ok' }));
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true, transformOptions: { enableImplicitConversion: false } }));
   try {
     await ensureAuditImmutability(app.get(PrismaService));

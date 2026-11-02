@@ -20,6 +20,8 @@ async function parse(res: Response) {
   return body;
 }
 
+export const API_BASE = (import.meta as any).env?.VITE_API_URL ? (import.meta as any).env.VITE_API_URL + '/api' : '/api';
+
 export async function api<T = any>(path: string, opts: { method?: string; body?: unknown; form?: FormData } = {}): Promise<T> {
   const headers: Record<string, string> = {};
   const t = getToken();
@@ -27,12 +29,12 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   let body: BodyInit | undefined;
   if (opts.form) body = opts.form;
   else if (opts.body !== undefined) { headers['Content-Type'] = 'application/json'; body = JSON.stringify(opts.body); }
-  return parse(await fetch('/api' + path, { method: opts.method || (body ? 'POST' : 'GET'), headers, body }));
+  return parse(await fetch(API_BASE + path, { method: opts.method || (body ? 'POST' : 'GET'), headers, body }));
 }
 
 /** Download a file through the authorised API (the token is needed, so a plain link would not work). */
 export async function download(path: string, filename: string, open = false) {
-  const res = await fetch('/api' + path, { headers: { Authorization: `Bearer ${getToken()}` } });
+  const res = await fetch(API_BASE + path, { headers: { Authorization: `Bearer ${getToken()}` } });
   if (!res.ok) throw new ApiError('Download failed');
   const url = URL.createObjectURL(await res.blob());
   if (open) {

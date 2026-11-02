@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, dmy, download, dt, getToken, inr } from '../api';
+import { api, dmy, download, dt, getToken, inr, API_BASE } from '../api';
 import { t } from '../i18n';
 import ResolutionPanel from './ResolutionPanel';
 import { Conf, Days, Empty, Err, Icon, PageSkeleton, Prov, Stepper, StatusBadge, Tabs, promptText, statusText, toast, useBank, useLoad, useMe } from '../ui';
@@ -14,7 +14,7 @@ function DocViewer({ doc }: { doc: any }) {
   useEffect(() => {
     let live = true;
     let objectUrl = '';
-    fetch(`/api/documents/${doc.id}/download`, { headers: { Authorization: `Bearer ${getToken()}` } })
+    fetch(`${API_BASE}/documents/${doc.id}/download`, { headers: { Authorization: `Bearer ${getToken()}` } })
       .then((r) => (r.ok ? r.blob() : Promise.reject(new Error('Could not load the document'))))
       .then((b) => { if (!live) return; objectUrl = URL.createObjectURL(b); setUrl(objectUrl); })
       .catch((e) => { if (live) setErr(e.message); });
