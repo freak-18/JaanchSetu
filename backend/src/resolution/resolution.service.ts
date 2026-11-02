@@ -1,5 +1,4 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { PrismaService } from '../infra/prisma.service';
 import { AuditService } from '../infra/audit.service';
 import { ClockService } from '../infra/clock.service';
@@ -44,11 +43,10 @@ export class ResolutionService implements OnModuleInit {
     private bank: BankService,
   ) {}
 
-  /** One active case per FDR, enforced by the database itself (a partial unique index; db push cannot express it). */
+  /** One active case per FDR — enforced at the application layer for MongoDB. */
   async onModuleInit() {
-    await this.prisma.$executeRawUnsafe(
-      `CREATE UNIQUE INDEX IF NOT EXISTS "ResolutionCase_one_active" ON "ResolutionCase"("fdrId") WHERE "state" NOT IN ('COMPLETED','REJECTED','CANCELLED')`,
-    );
+    // MongoDB does not support $executeRawUnsafe; the unique constraint is handled
+    // by the application-level check in create() instead.
   }
 
   // ------------------------------------------------------------------ policy
@@ -294,7 +292,7 @@ export class ResolutionService implements OnModuleInit {
           },
         });
         await tx.resolutionEvent.create({ data: { caseId: c.id, actorId: user.id, actorLabel: this.actorLabel(user), event: 'CASE_OPENED', toState: 'OPEN', meta: { type: input.type, reason, assignedTo: assignee?.name ?? null, dueDate: input.dueDate ?? null } as any, idemKey: idemKey ? `create:${idemKey}` : null, at } });
-        await this.audit.log({ actor: toActor(user), action: 'RESOLUTION_CASE_OPENED', entityType: 'ResolutionCase', entityId: c.id, detail: { caseNo: c.caseNo, fdrId, fdrNumber: fdr.fdrNumber, type: input.type, reason } }, tx);
+        await this.audit.log({ actor: toActor(user), action: 'RESOLUTION_CASE_OPENED', entityType: 'ResolutionCase', entityId: c.id, detail: { caseNo: c.caseNo, fdrId, fdrNumber: fdr.fdrNumber, type: input.type, reason } });
         return c;
       });
     } catch (e) {
@@ -322,7 +320,7 @@ export class ResolutionService implements OnModuleInit {
     await this.prisma.$transaction(async (tx) => {
       await tx.resolutionEvidence.create({ data: { caseId: id, kind, note, documentId: input.documentId ?? null, addedById: user.id, addedByName: user.name } });
       await tx.resolutionEvent.create({ data: { caseId: id, actorId: user.id, actorLabel: this.actorLabel(user), event: 'EVIDENCE_ADDED', meta: { kind, note } as any, at } });
-      await this.audit.log({ actor: toActor(user), action: 'RESOLUTION_EVIDENCE_ADDED', entityType: 'ResolutionCase', entityId: id, detail: { caseNo: c.caseNo, kind } }, tx);
+      await this.audit.log({ actor: toActor(user), action: 'RESOLUTION_EVIDENCE_ADDED', entityType: 'ResolutionCase', entityId: id, detail: { caseNo: c.caseNo, kind } });
       if (c.state === 'OPEN') {
         const r = await tx.resolutionCase.updateMany({ where: { id, version: c.version, state: 'OPEN' }, data: { state: 'EVIDENCE_PENDING', version: { increment: 1 } } });
         if (r.count === 1) await tx.resolutionEvent.create({ data: { caseId: id, actorId: user.id, actorLabel: this.actorLabel(user), event: 'EVIDENCE_STARTED', fromState: 'OPEN', toState: 'EVIDENCE_PENDING', at } });
@@ -348,7 +346,7 @@ export class ResolutionService implements OnModuleInit {
       await this.move(fresh as any, 'BLOCKED', user, 'BLOCKED', { blockedReasons: reasons as any }, { reasons });
       return this.get(user, id);
     }
-    await this.move(fresh as any, 'APPROVAL_PENDING', user, 'VERIFIED', { blockedReasons: Prisma.DbNull }, { checks: v.checks.map((x) => ({ key: x.key, pass: x.pass })) });
+    await this.move(fresh as any, 'APPROVAL_PENDING', user, 'VERIFIED', { blockedReasons: null }, { checks: v.checks.map((x) => ({ key: x.key, pass: x.pass })) });
     const approvers = await this.notify.recipientsForLevel(2, c.fdr.institutionId);
     await this.notify.notify(approvers.filter((a) => a.id !== user.id), { kind: 'RESOLUTION', title: `Needs your approval: ${c.caseNo}`, body: `${user.name} verified the ${c.type.toLowerCase()} case for FDR ${c.fdr.fdrNumber}. Please approve or reject it.`, fdrId: c.fdrId });
     return this.get(user, id);
@@ -451,7 +449,7 @@ export class ResolutionService implements OnModuleInit {
     if (!hasRole(user, 'SCRUTINY')) throw new ForbiddenException('Only a scrutiny officer reopens a blocked case.');
     const c = await this.caseFor(user, id);
     if (c.state !== 'BLOCKED') throw new BadRequestException('Only a blocked case can be reopened. A rejected or cancelled case needs a new case.');
-    await this.move(c as any, 'OPEN', user, 'REOPENED', { blockedReasons: Prisma.DbNull, submittedById: null, submittedByName: null }, {});
+    await this.move(c as any, 'OPEN', user, 'REOPENED', { blockedReasons: null, submittedById: null, submittedByName: null }, {});
     return this.get(user, id);
   }
 
